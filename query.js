@@ -13,17 +13,53 @@ const ai = new ChatGoogleGenerativeAI({
 
 const History = [];
 
+async function transformQuery(question) {
+  try {
+    // Create context from history for query transformation
+    const historyContext = History.length > 0 
+      ? History.map(h => `${h.role}: ${h.content}`).join('\n')
+      : "No previous conversation history.";
+
+    const fullPrompt = `You are a query rewriting expert. Based on the provided chat history, rephrase the "Follow Up user Question" into a complete, standalone question that can be understood without the chat history.
+Only output the rewritten question and nothing else.
+
+Chat History:
+${historyContext}
+
+Follow Up user Question: ${question}`;
+
+    const response = await ai.invoke([
+      { role: "user", content: fullPrompt }
+    ]);
+
+    // Return the transformed query as a string
+    return response.content || question; // Fallback to original question if no response
+    
+  } catch (error) {
+    console.error("Error in transformQuery:", error);
+    // Return original question if transformation fails
+    return question;
+  }
+}
+
 async function chatting(question) {
   try {
+    console.log("Transforming query...");
+    
+    // Transform the query first
+    const transformedQuery = await transformQuery(question);
+    console.log("Transformed query:", transformedQuery);
+    
     console.log("Creating embeddings...");
     
-    // Convert this question into vector
+    // Convert the transformed question into vector
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY,
       model: "text-embedding-004",
     });
 
-    const queryVector = await embeddings.embedQuery(question);
+    // Make sure we're passing a string to embedQuery
+    const queryVector = await embeddings.embedQuery(String(transformedQuery));
     console.log("Embeddings created, querying Pinecone...");
 
     // Initialize Pinecone
@@ -31,10 +67,8 @@ async function chatting(question) {
       apiKey: process.env.PINECONE_API_KEY,
     });
     
-    // Fixed typo: pincodeIndex -> pineconeIndex
     const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
     
-    // Fixed typo: serachResults -> searchResults
     const searchResults = await pineconeIndex.query({
       topK: 10,
       vector: queryVector,
@@ -51,7 +85,7 @@ async function chatting(question) {
 
     // Create the context from search results
     const context = searchResults.matches
-      .filter(match => match.metadata && match.metadata.text) // Filter out null metadata
+      .filter(match => match.metadata && match.metadata.text)
       .map((match) => match.metadata.text)
       .join("\n\n--\n\n");
 
@@ -62,6 +96,11 @@ async function chatting(question) {
 
     console.log("Context created, calling AI...");
 
+    // Create context from history for the main response
+    const historyContext = History.length > 0 
+      ? `\n\nChat History:\n${History.map(h => `${h.role}: ${h.content}`).join('\n')}`
+      : "";
+
     // Create the full prompt with context and question
     const fullPrompt = `You have to behave like a data structure algorithm expert.
 You will be given a context of relevant information and a user question.
@@ -69,9 +108,10 @@ Your task is to answer the user's question based only on the provided context.
 If the answer is not in the context, you must say "I could not find the answer in the provided documents".
 Keep your answer clear, concise and educational.
 
-Context: ${context}
+Context: ${context}${historyContext}
 
-Question: ${question}`;
+Original Question: ${question}
+Transformed Question: ${transformedQuery}`;
 
     // Call the AI with the full prompt as a single user message
     const response = await ai.invoke([
@@ -103,6 +143,9 @@ Question: ${question}`;
     }
     if (error.code) {
       console.error("Error Code:", error.code);
+    }
+    if (error.stack) {
+      console.error("Stack trace:", error.stack);
     }
   }
 }
