@@ -7,7 +7,7 @@ import { Pinecone } from "@pinecone-database/pinecone";
 
 const ai = new ChatGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY,
-  model: "gemini-2.0-flash-exp", 
+  model: "gemini-2.0-flash-exp",
   temperature: 0.1,
 });
 
@@ -16,9 +16,10 @@ const History = [];
 async function transformQuery(question) {
   try {
     // Create context from history for query transformation
-    const historyContext = History.length > 0 
-      ? History.map(h => `${h.role}: ${h.content}`).join('\n')
-      : "No previous conversation history.";
+    const historyContext =
+      History.length > 0
+        ? History.map((h) => `${h.role}: ${h.content}`).join("\n")
+        : "No previous conversation history.";
 
     const fullPrompt = `You are a query rewriting expert. Based on the provided chat history, rephrase the "Follow Up user Question" into a complete, standalone question that can be understood without the chat history.
 Only output the rewritten question and nothing else.
@@ -28,13 +29,10 @@ ${historyContext}
 
 Follow Up user Question: ${question}`;
 
-    const response = await ai.invoke([
-      { role: "user", content: fullPrompt }
-    ]);
+    const response = await ai.invoke([{ role: "user", content: fullPrompt }]);
 
     // Return the transformed query as a string
     return response.content || question; // Fallback to original question if no response
-    
   } catch (error) {
     console.error("Error in transformQuery:", error);
     // Return original question if transformation fails
@@ -45,13 +43,13 @@ Follow Up user Question: ${question}`;
 async function chatting(question) {
   try {
     console.log("Transforming query...");
-    
+
     // Transform the query first
     const transformedQuery = await transformQuery(question);
     console.log("Transformed query:", transformedQuery);
-    
+
     console.log("Creating embeddings...");
-    
+
     // Convert the transformed question into vector
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY,
@@ -66,9 +64,9 @@ async function chatting(question) {
     const pinecone = new Pinecone({
       apiKey: process.env.PINECONE_API_KEY,
     });
-    
+
     const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
-    
+
     const searchResults = await pineconeIndex.query({
       topK: 10,
       vector: queryVector,
@@ -85,7 +83,7 @@ async function chatting(question) {
 
     // Create the context from search results
     const context = searchResults.matches
-      .filter(match => match.metadata && match.metadata.text)
+      .filter((match) => match.metadata && match.metadata.text)
       .map((match) => match.metadata.text)
       .join("\n\n--\n\n");
 
@@ -97,9 +95,12 @@ async function chatting(question) {
     console.log("Context created, calling AI...");
 
     // Create context from history for the main response
-    const historyContext = History.length > 0 
-      ? `\n\nChat History:\n${History.map(h => `${h.role}: ${h.content}`).join('\n')}`
-      : "";
+    const historyContext =
+      History.length > 0
+        ? `\n\nChat History:\n${History.map(
+            (h) => `${h.role}: ${h.content}`
+          ).join("\n")}`
+        : "";
 
     // Create the full prompt with context and question
     const fullPrompt = `You have to behave like a data structure algorithm expert.
@@ -114,9 +115,7 @@ Original Question: ${question}
 Transformed Question: ${transformedQuery}`;
 
     // Call the AI with the full prompt as a single user message
-    const response = await ai.invoke([
-      { role: "user", content: fullPrompt }
-    ]);
+    const response = await ai.invoke([{ role: "user", content: fullPrompt }]);
 
     // Add to history after successful response
     History.push({
@@ -125,18 +124,17 @@ Transformed Question: ${transformedQuery}`;
     });
 
     History.push({
-      role: "assistant", 
+      role: "assistant",
       content: response.content,
     });
 
     console.log("\n=== AI Response ===");
     console.log(response.content);
     console.log("===================\n");
-
   } catch (error) {
     console.error("Error in chatting function:", error);
     console.error("Error details:", error.message);
-    
+
     // More detailed error logging
     if (error.response) {
       console.error("API Response Error:", error.response.data);
@@ -152,28 +150,27 @@ Transformed Question: ${transformedQuery}`;
 
 async function main() {
   console.log("RAG Chatbot initialized. Type 'exit' to quit.\n");
-  
+
   while (true) {
     try {
       const userProblem = readlineSync.question("Ask me anything --> ");
-      
+
       // Allow user to exit
-      if (userProblem.toLowerCase() === 'exit') {
+      if (userProblem.toLowerCase() === "exit") {
         console.log("Goodbye!");
         break;
       }
-      
+
       if (userProblem.trim()) {
         await chatting(userProblem);
       }
-      
     } catch (error) {
       console.error("Error in main loop:", error);
       break;
     }
   }
 }
- 
+
 // Add error handling for the main function
 main().catch((error) => {
   console.error("Fatal error:", error);
