@@ -11,7 +11,6 @@ async function indexDocumet(){
     const pdfLoader = new PDFLoader(PDF_PATH);
     const rawDocs = await pdfLoader.load()
     console.log("rawDocs completed")
-    // console.log(rawDocs.length)
 
     //chunking
     const textSplitter = new RecursiveCharacterTextSplitter({
@@ -22,7 +21,6 @@ async function indexDocumet(){
     const chunkedDocs= await textSplitter.splitDocuments(rawDocs)
     console.log("chunkedDocs")
 
-    //vector embedding
 
     const embedding = new GoogleGenerativeAIEmbeddings({
         apiKey: process.env.GEMINI_API_KEY,
@@ -31,7 +29,6 @@ async function indexDocumet(){
 
     console.log("embedding model created")
 
-    //data base config
     //initialize pinecone client
     console.log(process.env.PINECONE_API_KEY)
     const pinecone = new Pinecone({
